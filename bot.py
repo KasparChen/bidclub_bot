@@ -273,7 +273,7 @@ async def process_message(update: Update, context: ContextTypes) -> None:
                 # 人名是 [Alpha] 后到中文前的部分，去除首尾空格
                 name = first_line[:chinese_start].strip()
                 # 用 [] 包裹人名
-                name_with_brackets = f"[{name}]"
+                name_with_brackets = f"[ {name} ]"
                 # 替换中文为英文，并拼接人名和替换后的部分
                 processed_first_line = f"{name_with_brackets} {first_line[chinese_start:].replace(chinese, english)}"
                 break  # 找到匹配后退出循环，避免重复替换
