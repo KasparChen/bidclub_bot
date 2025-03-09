@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from typing import Set
 from telegram import Update
 from telegram.ext import (
@@ -13,6 +14,24 @@ from dotenv import load_dotenv
 
 # 加载 .env 文件
 load_dotenv()
+
+# 配置日志，忽略 getUpdates 的日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# 自定义日志过滤器，忽略 getUpdates
+class NoGetUpdatesFilter(logging.Filter):
+    def filter(self, record):
+        return "getUpdates" not in record.getMessage()
+
+logger.addFilter(NoGetUpdatesFilter())
 
 # 从环境变量加载配置
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -32,12 +51,13 @@ TEXT_RULES = {
     "引用了推文": "quoted a tweet"
 }
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes) -> None:
     """启动时获取 Bot 用户名并初始化"""
     global BOT_USERNAME
     if not BOT_USERNAME:
         bot_info = await context.bot.get_me()
         BOT_USERNAME = bot_info.username
+    logger.info("Bot started by user: %s", update.effective_user.username)
     await update.message.reply_text(f"@{BOT_USERNAME} has started! Use /help to see commands.")
 
 async def check_admin(update: Update) -> bool:
@@ -45,59 +65,71 @@ async def check_admin(update: Update) -> bool:
     user_name = update.effective_user.username
     if user_name in SUPER_ADMINS or user_name in (ADMINS - SUPER_ADMINS):
         return True
+    logger.warning("Permission denied for user: %s", user_name)
     await update.message.reply_text("Permission denied. Only admins or super admins can use this command.")
     return False
 
-async def set_origin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def set_origin(update: Update, context: ContextTypes) -> None:
     """设置源频道 ID（覆盖原有配置，支持多个 ID，用空格分隔）"""
     if not await check_admin(update):
         return
     if not context.args:
+        logger.info("Invalid /set_origin command from user: %s (no args)", update.effective_user.username)
         await update.message.reply_text("Usage: /set_origin <channel_id1> <channel_id2> ...")
         return
     try:
         global ORIGIN_CHATS
         ORIGIN_CHATS = set(int(cid) for cid in context.args)
+        logger.info("Origin channels set to: %s by user: %s", ORIGIN_CHATS, update.effective_user.username)
         await update.message.reply_text(f"Origin channels set to: {', '.join(map(str, ORIGIN_CHATS))}")
     except ValueError:
+        logger.error("Invalid channel IDs provided by user: %s", update.effective_user.username)
         await update.message.reply_text("Channel IDs must be integers!")
 
-async def set_destination(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def set_destination(update: Update, context: ContextTypes) -> None:
     """设置目标频道 ID（覆盖原有配置，支持多个 ID，用空格分隔）"""
     if not await check_admin(update):
         return
     if not context.args:
+        logger.info("Invalid /set_destination command from user: %s (no args)", update.effective_user.username)
         await update.message.reply_text("Usage: /set_destination <channel_id1> <channel_id2> ...")
         return
     try:
         global DESTINATION_CHATS
         DESTINATION_CHATS = set(int(cid) for cid in context.args)
+        logger.info("Destination channels set to: %s by user: %s", DESTINATION_CHATS, update.effective_user.username)
         await update.message.reply_text(f"Destination channels set to: {', '.join(map(str, DESTINATION_CHATS))}")
     except ValueError:
+        logger.error("Invalid channel IDs provided by user: %s", update.effective_user.username)
         await update.message.reply_text("Channel IDs must be integers!")
 
-async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def add_admin(update: Update, context: ContextTypes) -> None:
     """添加管理员（仅超级管理员可用）"""
     if update.effective_user.username not in SUPER_ADMINS:
+        logger.warning("User %s attempted to add admin without super admin privilege", update.effective_user.username)
         await update.message.reply_text("Only super admins can add admins!")
         return
     if not context.args or not context.args[0].startswith('@'):
+        logger.info("Invalid /add_admin command from user: %s (no valid handle)", update.effective_user.username)
         await update.message.reply_text("Usage: /add_admin @username")
         return
     handle = context.args[0][1:]  # 去除 @ 符号
     global ADMINS
     ADMINS.add(handle)
+    logger.info("Added %s as admin by super admin: %s", handle, update.effective_user.username)
     await update.message.reply_text(f"Added {handle} as admin.")
 
-async def rm_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def rm_admin(update: Update, context: ContextTypes) -> None:
     """移除管理员（显示当前管理员列表及编号，支持按编号删除，普通管理员可删除其他普通管理员，但不能删除超级管理员）"""
     if not await check_admin(update):
         return
     if not ADMINS - SUPER_ADMINS:  # 仅剩超级管理员时禁止删除
+        logger.info("Attempt to remove last admin or super admin by user: %s", update.effective_user.username)
         await update.message.reply_text("Cannot remove super admins or the last admin!")
         return
     admin_list = list(ADMINS - SUPER_ADMINS)  # 排除超级管理员
     if not admin_list:
+        logger.info("No regular admins to remove, reported to user: %s", update.effective_user.username)
         await update.message.reply_text("No regular admins currently.")
         return
     msg = "Current regular admins (enter number to remove):\n" + "\n".join(f"{i+1}. {admin}" for i, admin in enumerate(admin_list))
@@ -107,30 +139,35 @@ async def rm_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if 0 <= idx < len(admin_list):
             removed = admin_list[idx]
             if removed in SUPER_ADMINS and update.effective_user.username not in SUPER_ADMINS:
+                logger.warning("User %s attempted to remove super admin %s", update.effective_user.username, removed)
                 await update.message.reply_text("Cannot remove super admins!")
                 return
             ADMINS.remove(removed)
+            logger.info("Removed admin %s by user: %s", removed, update.effective_user.username)
             await update.message.reply_text(f"Removed admin {removed}.")
         else:
+            logger.info("Invalid number provided by user: %s for removing admin", update.effective_user.username)
             await update.message.reply_text("Invalid number!")
 
-async def pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def pause(update: Update, context: ContextTypes) -> None:
     """暂停消息转发"""
     if not await check_admin(update):
         return
     global IS_PAUSED
     IS_PAUSED = True
+    logger.info("Message forwarding paused by user: %s", update.effective_user.username)
     await update.message.reply_text("Message forwarding paused.")
 
-async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def resume(update: Update, context: ContextTypes) -> None:
     """恢复消息转发"""
     if not await check_admin(update):
         return
     global IS_PAUSED
     IS_PAUSED = False
+    logger.info("Message forwarding resumed by user: %s", update.effective_user.username)
     await update.message.reply_text("Message forwarding resumed.")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def status(update: Update, context: ContextTypes) -> None:
     """显示当前配置和状态"""
     if not await check_admin(update):
         return
@@ -141,9 +178,10 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Destination Channels: {', '.join(map(str, DESTINATION_CHATS)) if DESTINATION_CHATS else 'Not set'}\n"
         f"Admins: {', '.join(ADMINS) if ADMINS else 'None'}\n"
     )
+    logger.info("Status checked by user: %s, Status: %s", update.effective_user.username, status_msg.replace("**", ""))
     await update.message.reply_text(status_msg, parse_mode="Markdown")
 
-async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def process_message(update: Update, context: ContextTypes) -> None:
     """处理来自源频道的消息并转发到目标频道，只有匹配规则的消息才会转发"""
     if IS_PAUSED or not ORIGIN_CHATS or not DESTINATION_CHATS:
         return
@@ -168,15 +206,25 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     for dest_id in DESTINATION_CHATS:
         try:
             await context.bot.send_message(chat_id=dest_id, text=processed_text)
+            logger.info("Forwarded message from channel %d to %d", update.effective_chat.id, dest_id)
         except Exception as e:
-            print(f"Failed to forward to {dest_id}: {e}")
+            logger.error("Failed to forward message to %d: %s", dest_id, str(e))
 
 def main() -> None:
-    """主函数，启动 Bot"""
+    """主函数，启动 Bot，并打印初始运行状态"""
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN is not set in .env!")
     if not SUPER_ADMINS:
         print("Warning: SUPER_ADMIN_LIST is not set, super admins will be empty!")
+
+    # 打印 Bot 启动状态
+    print("Bot Starting...")
+    print(f"Bot Token: {'Set' if BOT_TOKEN else 'Not set'}")
+    print(f"Super Admins: {', '.join(SUPER_ADMINS) if SUPER_ADMINS else 'Not set'}")
+    print(f"Initial Origin Channels: {', '.join(map(str, ORIGIN_CHATS)) if ORIGIN_CHATS else 'Not set'}")
+    print(f"Initial Destination Channels: {', '.join(map(str, DESTINATION_CHATS)) if DESTINATION_CHATS else 'Not set'}")
+    print(f"Initial Admins: {', '.join(ADMINS) if ADMINS else 'Not set'}")
+    print(f"Initial Paused Status: {'Paused' if IS_PAUSED else 'Running'}")
 
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -194,6 +242,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL & ~filters.COMMAND, process_message))
 
     # 启动 Bot
+    logger.info("Bot started polling for updates")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
