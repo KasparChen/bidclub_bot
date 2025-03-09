@@ -11,8 +11,8 @@ from telegram.ext import (
     filters,
     ContextTypes,
     ConversationHandler,
-    State,
 )
+from telegram.ext._utils.types import State  # 修正 State 导入
 from dotenv import load_dotenv
 
 # 加载 .env 文件
@@ -123,7 +123,7 @@ async def get_user_name(username: str, context: ContextTypes) -> str:
         logger.error("Failed to get user name for %s: %s", username, str(e))
         return f"User {username}"
 
-async def set_origin_start(update: Update, context: ContextTypes) -> int:
+async def set_origin_start(update: Update, context: ContextTypes) -> State:
     """开始设置源频道，提示用户输入 ID"""
     if not await check_admin(update):
         return ConversationHandler.END
@@ -131,7 +131,7 @@ async def set_origin_start(update: Update, context: ContextTypes) -> int:
     await update.message.reply_text("Enter Channel ID to set origin channel, use space to separate. e.g. -123123123 -123123123")
     return SET_ORIGIN
 
-async def set_origin_handle(update: Update, context: ContextTypes) -> int:
+async def set_origin_handle(update: Update, context: ContextTypes) -> State:
     """处理用户输入的源频道 ID"""
     user_input = update.message.text
     try:
@@ -155,7 +155,7 @@ async def set_origin_handle(update: Update, context: ContextTypes) -> int:
         await update.message.reply_text(f"Error: Could not find or access the channel. Please check the Channel ID.")
     return ConversationHandler.END
 
-async def set_destination_start(update: Update, context: ContextTypes) -> int:
+async def set_destination_start(update: Update, context: ContextTypes) -> State:
     """开始设置目标频道，提示用户输入 ID"""
     if not await check_admin(update):
         return ConversationHandler.END
@@ -163,7 +163,7 @@ async def set_destination_start(update: Update, context: ContextTypes) -> int:
     await update.message.reply_text("Enter Channel ID to set destination channel, use space to separate. e.g. -123123123 -123123123")
     return SET_DESTINATION
 
-async def set_destination_handle(update: Update, context: ContextTypes) -> int:
+async def set_destination_handle(update: Update, context: ContextTypes) -> State:
     """处理用户输入的目标频道 ID"""
     user_input = update.message.text
     try:
@@ -187,7 +187,7 @@ async def set_destination_handle(update: Update, context: ContextTypes) -> int:
         await update.message.reply_text(f"Error: Could not find or access the channel. Please check the Channel ID.")
     return ConversationHandler.END
 
-async def add_admin_start(update: Update, context: ContextTypes) -> int:
+async def add_admin_start(update: Update, context: ContextTypes) -> State:
     """开始添加管理员，提示用户输入用户名"""
     if update.effective_user.username not in SUPER_ADMINS:
         logger.warning("User %s attempted to add admin without super admin privilege", update.effective_user.username)
@@ -197,7 +197,7 @@ async def add_admin_start(update: Update, context: ContextTypes) -> int:
     await update.message.reply_text("Enter Telegram username to add as admin (e.g. @username)")
     return ADD_ADMIN
 
-async def add_admin_handle(update: Update, context: ContextTypes) -> int:
+async def add_admin_handle(update: Update, context: ContextTypes) -> State:
     """处理用户输入的管理员用户名"""
     user_input = update.message.text
     if not user_input.startswith('@'):
@@ -217,7 +217,7 @@ async def add_admin_handle(update: Update, context: ContextTypes) -> int:
         await update.message.reply_text(f"Error: Could not find or access the user. Please check the username.")
     return ConversationHandler.END
 
-async def cancel(update: Update, context: ContextTypes) -> int:
+async def cancel(update: Update, context: ContextTypes) -> State:
     """取消当前对话"""
     logger.info("Conversation cancelled by user: %s", update.effective_user.username)
     await update.message.reply_text("Operation cancelled.")
