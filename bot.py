@@ -1,8 +1,9 @@
 import os
 import re
+import json
 import logging
 from typing import Set
-from telegram import Update
+from telegram import Update, Chat
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -38,10 +39,40 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPER_ADMINS = set(os.getenv("SUPER_ADMIN_LIST", "").split(",")) if os.getenv("SUPER_ADMIN_LIST") else set()
 BOT_USERNAME = None  # 会在启动时动态获取
 
-# 状态和配置
-ORIGIN_CHATS: Set[int] = set()  # 源频道 ID 集合
-DESTINATION_CHATS: Set[int] = set()  # 目标频道 ID 集合
-ADMINS: Set[str] = SUPER_ADMINS.copy()  # 管理员列表（包括超级管理员）
+# 配置文件路径
+CONFIG_FILE = "config.json"
+
+# 加载或初始化配置
+def load_config():
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+            return {
+                "ORIGIN_CHATS": set(config.get("origin_chats", [])),
+                "DESTINATION_CHATS": set(config.get("destination_chats", [])),
+                "ADMINS": set(config.get("admins", list(SUPER_ADMINS)))
+            }
+    except FileNotFoundError:
+        return {
+            "ORIGIN_CHATS": set(),
+            "DESTINATION_CHATS": set(),
+            "ADMINS": SUPER_ADMINS.copy()
+        }
+
+# 保存配置
+def save_config(config):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump({
+            "origin_chats": list(config["ORIGIN_CHATS"]),
+            "destination_chats": list(config["DESTINATION_CHATS"]),
+            "admins": list(config["ADMINS"])
+        }, f, indent=4)
+
+# 加载配置
+config = load_config()
+ORIGIN_CHATS = config["ORIGIN_CHATS"]
+DESTINATION_CHATS = config["DESTINATION_CHATS"]
+ADMINS = config["ADMINS"]
 IS_PAUSED: bool = False  # 暂停状态
 
 # 文本处理规则：将中文描述替换为英文
@@ -69,6 +100,15 @@ async def check_admin(update: Update) -> bool:
     await update.message.reply_text("Permission denied. Only admins or super admins can use this command.")
     return False
 
+async def get_chat_name(chat_id: int, context: ContextTypes) -> str:
+    """获取频道的名称"""
+    try:
+        chat: Chat = await context.bot.get_chat(chat_id)
+        return chat.title or f"Channel {chat_id}"
+    except Exception as e:
+        logger.error("Failed to get chat name for ID %d: %s", chat_id, str(e))
+        return f"Channel {chat_id}"
+
 async def set_origin(update: Update, context: ContextTypes) -> None:
     """设置源频道 ID（覆盖原有配置，支持多个 ID，用空格分隔）"""
     if not await check_admin(update):
@@ -79,9 +119,17 @@ async def set_origin(update: Update, context: ContextTypes) -> None:
         return
     try:
         global ORIGIN_CHATS
-        ORIGIN_CHATS = set(int(cid) for cid in context.args)
+        new_origins = set(int(cid) for cid in context.args)
+        channel_names = []
+        for cid in new_origins:
+            name = await get_chat_name(cid, context)
+            channel_names.append(name)
+        ORIGIN_CHATS = new_origins
+        save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
+        current_list = "\n".join(channel_names)
+        response = f"{', '.join(channel_names)} added as Origin Channels\nCurrent Origin List:\n{current_list}"
         logger.info("Origin channels set to: %s by user: %s", ORIGIN_CHATS, update.effective_user.username)
-        await update.message.reply_text(f"Origin channels set to: {', '.join(map(str, ORIGIN_CHATS))}")
+        await update.message.reply_text(response)
     except ValueError:
         logger.error("Invalid channel IDs provided by user: %s", update.effective_user.username)
         await update.message.reply_text("Channel IDs must be integers!")
@@ -96,9 +144,17 @@ async def set_destination(update: Update, context: ContextTypes) -> None:
         return
     try:
         global DESTINATION_CHATS
-        DESTINATION_CHATS = set(int(cid) for cid in context.args)
+        new_destinations = set(int(cid) for cid in context.args)
+        channel_names = []
+        for cid in new_destinations:
+            name = await get_chat_name(cid, context)
+            channel_names.append(name)
+        DESTINATION_CHATS = new_destinations
+        save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
+        current_list = "\n".join(channel_names)
+        response = f"{', '.join(channel_names)} added as Destination Channels\nCurrent Destination List:\n{current_list}"
         logger.info("Destination channels set to: %s by user: %s", DESTINATION_CHATS, update.effective_user.username)
-        await update.message.reply_text(f"Destination channels set to: {', '.join(map(str, DESTINATION_CHATS))}")
+        await update.message.reply_text(response)
     except ValueError:
         logger.error("Invalid channel IDs provided by user: %s", update.effective_user.username)
         await update.message.reply_text("Channel IDs must be integers!")
@@ -116,6 +172,7 @@ async def add_admin(update: Update, context: ContextTypes) -> None:
     handle = context.args[0][1:]  # 去除 @ 符号
     global ADMINS
     ADMINS.add(handle)
+    save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
     logger.info("Added %s as admin by super admin: %s", handle, update.effective_user.username)
     await update.message.reply_text(f"Added {handle} as admin.")
 
@@ -143,6 +200,7 @@ async def rm_admin(update: Update, context: ContextTypes) -> None:
                 await update.message.reply_text("Cannot remove super admins!")
                 return
             ADMINS.remove(removed)
+            save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
             logger.info("Removed admin %s by user: %s", removed, update.effective_user.username)
             await update.message.reply_text(f"Removed admin {removed}.")
         else:
@@ -155,6 +213,7 @@ async def pause(update: Update, context: ContextTypes) -> None:
         return
     global IS_PAUSED
     IS_PAUSED = True
+    save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
     logger.info("Message forwarding paused by user: %s", update.effective_user.username)
     await update.message.reply_text("Message forwarding paused.")
 
@@ -164,6 +223,7 @@ async def resume(update: Update, context: ContextTypes) -> None:
         return
     global IS_PAUSED
     IS_PAUSED = False
+    save_config({"ORIGIN_CHATS": ORIGIN_CHATS, "DESTINATION_CHATS": DESTINATION_CHATS, "ADMINS": ADMINS})
     logger.info("Message forwarding resumed by user: %s", update.effective_user.username)
     await update.message.reply_text("Message forwarding resumed.")
 
@@ -172,14 +232,14 @@ async def status(update: Update, context: ContextTypes) -> None:
     if not await check_admin(update):
         return
     status_msg = (
-        f"**Current Status:**\n"
+        "Current Status:\n"
         f"Running Status: {'Paused' if IS_PAUSED else 'Running'}\n"
         f"Origin Channels: {', '.join(map(str, ORIGIN_CHATS)) if ORIGIN_CHATS else 'Not set'}\n"
         f"Destination Channels: {', '.join(map(str, DESTINATION_CHATS)) if DESTINATION_CHATS else 'Not set'}\n"
         f"Admins: {', '.join(ADMINS) if ADMINS else 'None'}\n"
     )
-    logger.info("Status checked by user: %s, Status: %s", update.effective_user.username, status_msg.replace("**", ""))
-    await update.message.reply_text(status_msg, parse_mode="Markdown")
+    logger.info("Status checked by user: %s, Status: %s", update.effective_user.username, status_msg.strip())
+    await update.message.reply_text(status_msg)  # 移除 parse_mode="Markdown"，避免 Markdown 解析错误
 
 async def process_message(update: Update, context: ContextTypes) -> None:
     """处理来自源频道的消息并转发到目标频道，只有匹配规则的消息才会转发"""
