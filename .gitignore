@@ -1,0 +1,22 @@
+# Python 缓存和编译文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虚拟环境
+env/
+venv/
+
+# 配置文件（包含敏感信息）
+.env
+
+# IDE 和编辑器文件
+*.idea/
+*.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
