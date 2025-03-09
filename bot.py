@@ -224,10 +224,13 @@ async def status(update: Update, context: ContextTypes) -> None:
     """显示 Bot 当前状态和配置"""
     if not await check_admin(update):
         return
+    # 获取频道名称和 ID 的组合
+    origin_channels = [f"{await get_chat_name(cid, context)} ({cid})" for cid in ORIGIN_CHATS] or ["Not set"]
+    dest_channels = [f"{await get_chat_name(cid, context)} ({cid})" for cid in DESTINATION_CHATS] or ["Not set"]
     msg = (
         f"Status: {'Paused' if IS_PAUSED else 'Running'}\n"
-        f"Origin Channels: {', '.join(map(str, ORIGIN_CHATS)) or 'Not set'}\n"
-        f"Destination Channels: {', '.join(map(str, DESTINATION_CHATS)) or 'Not set'}\n"
+        f"Origin Channels: {', '.join(origin_channels)}\n"
+        f"Destination Channels: {', '.join(dest_channels)}\n"
         f"Admins: {', '.join(ADMINS) or 'None'}"
     )
     await update.message.reply_text(msg)
