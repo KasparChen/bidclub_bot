@@ -240,9 +240,16 @@ async def process_message(update: Update, context: ContextTypes) -> None:
     """处理源频道消息并转发到目标频道"""
     if IS_PAUSED or update.effective_chat.id not in ORIGIN_CHATS or not DESTINATION_CHATS:  # 检查是否暂停或配置未完成
         return
-    text = update.message.text or ""
+    
+    # 检查 channel_post 是否存在，避免 AttributeError
+    if not update.channel_post:
+        logger.warning(f"No channel_post in update from chat {update.effective_chat.id}")
+        return
+    
+    text = update.channel_post.text or ""  # 获取频道消息的文本内容
     if not text.startswith("[Alpha]"):  # 只处理以 [Alpha] 开头的消息
         return
+    
     for chinese, english in TEXT_RULES.items():  # 替换文本规则
         if chinese in text:
             processed_text = text.replace(chinese, english)
