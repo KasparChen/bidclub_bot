@@ -16,17 +16,16 @@ A simple, efficient, and elegant Telegram bot designed to forward messages from 
 
 ## Command List
 
-| Command            | Description                                      | Usage Example                 | Permission       |
-|--------------------|--------------------------------------------------|-------------------------------|------------------|
-| `/start`           | Starts the bot and displays a welcome message.   | `/start`                      | All users        |
-| `/set_origin`      | Sets/overwrites origin channel IDs.              | `/set_origin -123123 -456456` | Admins           |
-| `/set_destination` | Sets/overwrites destination channel IDs.         | `/set_destination -789789`    | Admins           |
-| `/add_admin`       | Adds a new admin by Telegram username.           | `/add_admin @JohnDoe`         | Super Admins     |
-| `/rm_admin`        | Lists admins or removes one by number.           | `/rm_admin` or `/rm_admin 1`  | Admins           |
-| `/pause`           | Pauses message forwarding.                       | `/pause`                      | Admins           |
-| `/resume`          | Resumes message forwarding.                      | `/resume`                     | Admins           |
-| `/status`          | Shows bot status and configurations.             | `/status`                     | Admins           |
-| `/cancel`          | Cancels an ongoing command operation.            | `/cancel`                     | Admins (in conv.)|
+| Command            | Description                                      | Permission       |
+|--------------------|--------------------------------------------------|------------------|
+| `/start`           | Starts the bot and displays a welcome message.   | All users        |
+| `/set_origin`      | Sets/overwrites origin channel IDs.              | Admins           |
+| `/set_destination` | Sets/overwrites destination channel IDs.         | Admins           |
+| `/add_admin`       | Adds a new admin by Telegram username.           | Super Admins     |
+| `/rm_admin`        | Lists admins or removes one by number.           | Admins           |
+| `/pause`           | Pauses message forwarding.                       | Admins           |
+| `/resume`          | Resumes message forwarding.                      | Admins           |
+| `/status`          | Shows bot status and configurations.             | Admins           |
 
 ### Notes on Commands
 - Channel IDs must be integers (e.g., `-100123456789`), obtainable via Telegram's API or bots like `@GetIDsBot`.
