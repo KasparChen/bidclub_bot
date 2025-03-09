@@ -71,9 +71,9 @@ SET_ORIGIN, SET_DESTINATION, ADD_ADMIN = range(3)  # 状态：设置源频道、
 
 # 文本替换规则：将中文替换为英文
 TEXT_RULES = {
-    "发布新推文": "posted a new tweet",
-    "转发了推文": "retweeted a tweet",
-    "引用了推文": "quoted a tweet"
+    "发布新推文": "Posted a New Tweet",
+    "转发了推文": "RT a Tweet",
+    "引用了推文": "Quoted a Tweet"
 }
 
 async def start(update: Update, context: ContextTypes) -> None:
