@@ -236,6 +236,9 @@ async def status(update: Update, context: ContextTypes) -> None:
     await update.message.reply_text(msg)
     logger.info(f"Status checked by {update.effective_user.username}")
 
+# 文件: bot.py
+# 修改部分: process_message 函数 (原行号 239-263)
+
 async def process_message(update: Update, context: ContextTypes) -> None:
     """处理源频道消息并转发到目标频道"""
     # 检查是否暂停、是否为源频道消息、以及目标频道是否已设置
@@ -257,16 +260,27 @@ async def process_message(update: Update, context: ContextTypes) -> None:
     text_without_alpha = text[len("[Alpha]"):].strip()  # 删除 [Alpha] 并去除首尾空格
     lines = text_without_alpha.split("\n")  # 按换行符分割消息
     
-    # 处理第一行：提取内容并添加 []
+    # 处理第一行：提取人名并用 [] 包裹，再替换中文
     if lines:  # 确保消息非空
         first_line = lines[0].strip()  # 获取第一行并去除首尾空格
-        # 对第一行应用文本替换规则
+        processed_first_line = first_line  # 初始化处理后的第一行
+        
+        # 遍历文本替换规则，定位中文部分并提取人名
         for chinese, english in TEXT_RULES.items():
             if chinese in first_line:
-                first_line = first_line.replace(chinese, english)
+                # 找到中文部分的起始位置
+                chinese_start = first_line.index(chinese)
+                # 人名是 [Alpha] 后到中文前的部分，去除首尾空格
+                name = first_line[:chinese_start].strip()
+                # 用 [] 包裹人名
+                name_with_brackets = f"[{name}]"
+                # 替换中文为英文，并拼接人名和替换后的部分
+                processed_first_line = f"{name_with_brackets} {first_line[chinese_start:].replace(chinese, english)}"
                 break  # 找到匹配后退出循环，避免重复替换
-        # 在第一行两侧添加 []
-        processed_first_line = f"[ {first_line} ]"
+        
+        # 如果没有匹配到中文规则，则仅删除 [Alpha] 前缀，不添加 []
+        if processed_first_line == first_line:
+            processed_first_line = first_line
         
         # 重组消息：第一行已处理，后续行保持不变
         processed_text = processed_first_line
